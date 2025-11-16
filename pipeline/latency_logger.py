@@ -183,7 +183,9 @@ class LatencyLogger:
                 end.record()
                 torch.cuda.synchronize()
                 ms = start.elapsed_time(end)
-                self._current.stages_ms[name] = self._current.stages_ms.get(name, 0.0) + float(ms)
+                # Check if current is still valid before accessing
+                if self._current is not None:
+                    self._current.stages_ms[name] = self._current.stages_ms.get(name, 0.0) + float(ms)
         else:
             t0 = time.perf_counter()
             if nvtx: self._push_nvtx(name)
@@ -192,7 +194,9 @@ class LatencyLogger:
             finally:
                 if nvtx: self._pop_nvtx()
                 ms = (time.perf_counter() - t0) * 1000.0
-                self._current.stages_ms[name] = self._current.stages_ms.get(name, 0.0) + float(ms)
+                # Check if current is still valid before accessing
+                if self._current is not None:
+                    self._current.stages_ms[name] = self._current.stages_ms.get(name, 0.0) + float(ms)
 
     # --------- denoise step-scoped timers ----------
     @contextlib.contextmanager
@@ -272,7 +276,9 @@ class LatencyLogger:
                 if nvtx: self._pop_nvtx()
                 end.record(); torch.cuda.synchronize()
                 ms = start.elapsed_time(end)
-                self._batch.stages_ms[name] = self._batch.stages_ms.get(name, 0.0) + float(ms)
+                # Check if batch is still valid before accessing
+                if self._batch is not None:
+                    self._batch.stages_ms[name] = self._batch.stages_ms.get(name, 0.0) + float(ms)
         else:
             t0 = time.perf_counter()
             if nvtx: self._push_nvtx(f"batch:{name}")
@@ -281,7 +287,9 @@ class LatencyLogger:
             finally:
                 if nvtx: self._pop_nvtx()
                 ms = (time.perf_counter() - t0) * 1000.0
-                self._batch.stages_ms[name] = self._batch.stages_ms.get(name, 0.0) + float(ms)
+                # Check if batch is still valid before accessing
+                if self._batch is not None:
+                    self._batch.stages_ms[name] = self._batch.stages_ms.get(name, 0.0) + float(ms)
 
 class _StepRecorder:
     def __init__(self, parent: LatencyLogger, step_idx: int):
