@@ -157,7 +157,7 @@ dataset = MultiTextDataset(config.data_path)
 # Validate number of segments & switch_frame_indices length
 num_segments = len(dataset[0]["prompts_list"])
 assert len(switch_frame_indices) == num_segments - 1, (
-    "The number of switch_frame_indices should be the number of prompt segments minus 1"
+    f"The number of switch_frame_indices {len(switch_frame_indices)} should be the number of prompt segments {num_segments} minus 1"
 )
 
 print("Number of segments:", num_segments)
