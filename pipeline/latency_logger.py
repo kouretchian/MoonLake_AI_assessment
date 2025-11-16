@@ -70,11 +70,11 @@ class LatencyLogger:
         self.jsonl_path = jsonl_path or "latency.jsonl"
         self.nested_batches = nested_batches
         self.frames_also_jsonl = frames_also_jsonl
-        self._current: Optional[LatencySample] = None
+        self._current: LatencySample = LatencySample(frame_idx=-1)
         self._active_events: Dict[str, Any] = {}
         self._active_ranges: List[str] = []
         # ----- batch context -----
-        self._batch: Optional[BatchSample] = None
+        self._batch: BatchSample = BatchSample(batch_idx=0)
         self._batch_frames_buf: Optional[List[Dict[str, Any]]] = None  # buffer when nested
         # ----- inter-frame tracking -----
         self._last_frame_end_ms: Optional[float] = None

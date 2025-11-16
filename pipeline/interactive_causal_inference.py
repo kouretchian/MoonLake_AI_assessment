@@ -115,6 +115,7 @@ class InteractiveCausalInferencePipeline(CausalInferencePipeline):
         switch_frame_indices: List[int],
         return_latents: bool = False,
         low_memory: bool = False,
+        batch_idx: int = 0,
     ):
         """Generate a video and switch prompts at specified frame indices.
 
@@ -125,6 +126,7 @@ class InteractiveCausalInferencePipeline(CausalInferencePipeline):
                 we start using the prompts for segment i+1.
             return_latents: Whether to also return the latent tensor.
             low_memory: Enable low-memory mode.
+            batch_idx: Batch index for latency logging (default: 0).
         """
         batch_size, num_output_frames, num_channels, height, width = noise.shape
         assert len(text_prompts_list) >= 1, "text_prompts_list must not be empty"
@@ -136,7 +138,7 @@ class InteractiveCausalInferencePipeline(CausalInferencePipeline):
 
         # Start batch-level timing with comprehensive metadata
         with self.latency.batch_scope(
-            batch_idx=0,
+            batch_idx=batch_idx,
             batch_size=batch_size,
             num_output_frames=num_output_frames,
             num_frame_per_block=self.num_frame_per_block,

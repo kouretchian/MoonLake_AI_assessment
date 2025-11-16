@@ -76,10 +76,9 @@ low_memory = get_cuda_free_memory_gb(device) < 40
 torch.set_grad_enabled(False)
 
 latency = LatencyLogger(
-    jsonl_path= getattr(args, "latency_logger", "latency.json1"),
-    nested_batches= True, #to get one batch row with nested frames
-    frames_also_jsonl= False #set True if want streaming per-frame rows
-
+    jsonl_path=getattr(args, "latency_logger", "latency.jsonl"),
+    nested_batches=True,  # to get one batch row with nested frames
+    frames_also_jsonl=False  # set True if want streaming per-frame rows
 )
 
 pipeline = InteractiveCausalInferencePipeline(config, device=device, latency_logger = latency)
@@ -185,12 +184,9 @@ if dist.is_initialized():
 for i, batch_data in tqdm(enumerate(dataloader), disable=(local_rank != 0)):
     idx = batch_data["idx"].item()
     prompts_list: List[str] = batch_data["prompts_list"]  # type: ignore
-    with latency.batch_scope(i, batch_size=len(batch_data["prompts_list"] )):
-        # Optional: measure loader/prep
-        # with latency.batch_timer("dataloader_next"): ...
-        # with latency.batch_timer("h2d_prompts"): ...
-        with latency.batch_timer("batch_total"):
-            sampled_noise = torch.randn(
+    
+    # Generate noise for this batch
+    sampled_noise = torch.randn(
         [
             config.num_samples,
             config.num_output_frames,
@@ -202,12 +198,14 @@ for i, batch_data in tqdm(enumerate(dataloader), disable=(local_rank != 0)):
         dtype=torch.bfloat16,
     )
 
-            video = pipeline.inference(
-                noise=sampled_noise,
-                text_prompts_list=prompts_list,
-                switch_frame_indices=switch_frame_indices,
-                return_latents=False,
-                )
+    # Run inference with automatic batch_idx tracking
+    video = pipeline.inference(
+        noise=sampled_noise,
+        text_prompts_list=[prompts_list],  # Wrap in list for batch processing
+        switch_frame_indices=switch_frame_indices,
+        return_latents=False,
+        batch_idx=idx,  # Use actual dataset index for tracking
+    )
 
     current_video = rearrange(video, "b t c h w -> b t h w c").cpu() * 255.0
 
@@ -229,7 +227,7 @@ for i, batch_data in tqdm(enumerate(dataloader), disable=(local_rank != 0)):
             output_path = os.path.join(config.output_folder, f"rank{rank}-{idx}-{seed_idx}_{model_type}.mp4")
         else:
             # Use the first prompt segment as the filename prefix to avoid overly long names
-            short_name = prompts_list[0][0][:100].replace("/", "_")
+            short_name = prompts_list[0][:100].replace("/", "_")
             output_path = os.path.join(config.output_folder, f"rank{rank}-{short_name}-{seed_idx}_{model_type}.mp4")
         write_video(output_path, current_video[seed_idx].to(torch.uint8), fps=16)
 
