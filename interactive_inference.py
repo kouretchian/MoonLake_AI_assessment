@@ -183,20 +183,14 @@ if dist.is_initialized():
 
 # ----------------------------- Inference loop -----------------------------
 for i, batch_data in tqdm(enumerate(dataloader), disable=(local_rank != 0)):
+    idx = batch_data["idx"].item()
+    prompts_list: List[str] = batch_data["prompts_list"]  # type: ignore
     with latency.batch_scope(i, batch_size=len(batch_data["prompts_list"] )):
         # Optional: measure loader/prep
         # with latency.batch_timer("dataloader_next"): ...
         # with latency.batch_timer("h2d_prompts"): ...
         with latency.batch_timer("batch_total"):
-            _ = pipeline.inference(
-                prompts=batch_data["prompts_list"] ,                 # pass this batch’s prompts
-                num_frames=args.num_frames,            # frames per prompt (or per batch)
-                **infer_kwargs
-            )
-    idx = batch_data["idx"].item()
-    prompts_list: List[str] = batch_data["prompts_list"]  # type: ignore
-
-    sampled_noise = torch.randn(
+            sampled_noise = torch.randn(
         [
             config.num_samples,
             config.num_output_frames,
@@ -208,12 +202,12 @@ for i, batch_data in tqdm(enumerate(dataloader), disable=(local_rank != 0)):
         dtype=torch.bfloat16,
     )
 
-    video = pipeline.inference(
-        noise=sampled_noise,
-        text_prompts_list=prompts_list,
-        switch_frame_indices=switch_frame_indices,
-        return_latents=False,
-    )
+            video = pipeline.inference(
+                noise=sampled_noise,
+                text_prompts_list=prompts_list,
+                switch_frame_indices=switch_frame_indices,
+                return_latents=False,
+                )
 
     current_video = rearrange(video, "b t c h w -> b t h w c").cpu() * 255.0
 
