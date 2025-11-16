@@ -164,6 +164,91 @@ class LatencyLogger:
             }
             self._batch.prompt_switches.append(switch_event)
 
+    # --------- block frame processing ----------
+    def start_frame_block(self, start_frame_idx: int, num_frames: int, **meta):
+        """Start timing for a block of frames processed together."""
+        # Create a representative frame for the block
+        merged_meta = dict(meta)
+        if self._batch is not None:
+            merged_meta = {**self._batch.meta, **merged_meta}
+        
+        merged_meta.update({
+            "start_frame_idx": start_frame_idx,
+            "num_frames": num_frames,
+            "end_frame_idx": start_frame_idx + num_frames - 1,
+            "is_frame_block": True
+        })
+        
+        self._current = LatencySample(frame_idx=start_frame_idx, meta=merged_meta)
+        self._active_events.clear()
+        self._active_ranges.clear()
+        
+        # Record start time for inter-frame latency
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        self._current.start_time_ms = time.perf_counter() * 1000.0
+        
+        # Calculate inter-frame gap (from last block to this block)
+        if self._last_frame_end_ms is not None:
+            self._current.inter_frame_gap_ms = self._current.start_time_ms - self._last_frame_end_ms
+
+    def finalize_frame_block(self):
+        """Finalize timing for a block of frames."""
+        if self._current is None or not self._current.meta.get("is_frame_block", False):
+            return self.finalize_frame()  # Fall back to regular frame finalization
+            
+        # Record end time for inter-frame latency
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        self._current.end_time_ms = time.perf_counter() * 1000.0
+        self._last_frame_end_ms = self._current.end_time_ms
+
+        # Build the frame dict for the block
+        frame_row = {
+            "record": "frame_block",
+            "start_frame_idx": self._current.meta["start_frame_idx"],
+            "end_frame_idx": self._current.meta["end_frame_idx"],
+            "num_frames": self._current.meta["num_frames"],
+            "meta": self._current.meta,
+            "stages_ms": self._current.stages_ms,
+            "denoise_steps_ms": self._current.denoise_steps_ms,
+            "inter_frame_gap_ms": self._current.inter_frame_gap_ms,
+        }
+
+        # If we're inside a batch and nested output is enabled, buffer it
+        if self._batch is not None and self.nested_batches:
+            if self._batch_frames_buf is None:
+                self._batch_frames_buf = []
+            self._batch_frames_buf.append(frame_row)
+            if self.frames_also_jsonl:
+                os.makedirs(os.path.dirname(self.jsonl_path) or ".", exist_ok=True)
+                with open(self.jsonl_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(frame_row) + "\n")
+        else:
+            # No active batch: write the frame block as a standalone line
+            os.makedirs(os.path.dirname(self.jsonl_path) or ".", exist_ok=True)
+            with open(self.jsonl_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(frame_row) + "\n")
+
+        # Accumulate into batch aggregates if active
+        if self._batch is not None:
+            self._batch.frames_count += self._current.meta["num_frames"]  # Add all frames in block
+            # sum frame stages
+            for k, v in self._current.stages_ms.items():
+                self._batch.frames_sum_stages_ms[k] = self._batch.frames_sum_stages_ms.get(k, 0.0) + float(v)
+            # sum step breakdowns by index
+            for i, step_dict in enumerate(self._current.denoise_steps_ms):
+                while len(self._batch.frames_sum_denoise_steps_ms) <= i:
+                    self._batch.frames_sum_denoise_steps_ms.append({})
+                for sk, sv in step_dict.items():
+                    agg = self._batch.frames_sum_denoise_steps_ms[i]
+                    agg[sk] = agg.get(sk, 0.0) + float(sv)
+            # track inter-frame gaps (this represents gaps between blocks)
+            if self._current.inter_frame_gap_ms is not None:
+                self._batch.inter_frame_gaps_ms.append(self._current.inter_frame_gap_ms)
+
+        self._current = None
+
     # --------- simple stage timers ----------
     @contextlib.contextmanager
     def timer(self, name: str) -> Iterator[None]:

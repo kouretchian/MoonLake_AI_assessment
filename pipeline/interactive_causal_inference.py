@@ -248,14 +248,14 @@ class InteractiveCausalInferencePipeline(CausalInferencePipeline):
                     ]
 
                     # Start frame timing for each frame in this block
-                    for frame_offset in range(current_num_frames):
-                        frame_idx = current_start_frame + frame_offset
-                        self.latency.start_frame(
-                            frame_idx,
-                            prompt=text_prompts_list[segment_idx][0] if text_prompts_list[segment_idx] else "",
-                            block_idx=block_idx,
-                            segment_idx=segment_idx,
-                        )
+                    # Start frame timing for the entire block
+                    self.latency.start_frame_block(
+                        start_frame_idx=current_start_frame,
+                        num_frames=current_num_frames,
+                        prompt=text_prompts_list[segment_idx][0] if text_prompts_list[segment_idx] else "",
+                        block_idx=block_idx,
+                        segment_idx=segment_idx,
+                    )
 
                     # ---------------- Spatial denoising loop ----------------
                     with self.latency.timer("denoise_loop_total"):
@@ -324,9 +324,8 @@ class InteractiveCausalInferencePipeline(CausalInferencePipeline):
                             current_start=current_start_frame * self.frame_seq_length,
                         )
 
-                    # Finalize frame timing for each frame in this block
-                    for frame_offset in range(current_num_frames):
-                        self.latency.finalize_frame()
+                    # Finalize frame timing for the block
+                    self.latency.finalize_frame_block()
 
                     # Update frame pointer
                     current_start_frame += current_num_frames

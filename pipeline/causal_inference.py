@@ -167,14 +167,13 @@ class CausalInferencePipeline(torch.nn.Module):
                     noisy_input = noise[
                         :, current_start_frame:current_start_frame + current_num_frames]
 
-                    # Start frame timing for each frame in this block
-                    for frame_offset in range(current_num_frames):
-                        frame_idx = current_start_frame + frame_offset
-                        self.latency.start_frame(
-                            frame_idx,
-                            prompt=text_prompts[0] if isinstance(text_prompts, list) else str(text_prompts),
-                            block_idx=block_idx,
-                        )
+                    # Start frame timing for the entire block
+                    self.latency.start_frame_block(
+                        start_frame_idx=current_start_frame,
+                        num_frames=current_num_frames,
+                        prompt=text_prompts[0] if isinstance(text_prompts, list) else str(text_prompts),
+                        block_idx=block_idx,
+                    )
 
                     # Step 2.1: Spatial denoising loop
                     with self.latency.timer("denoise_loop_total"):
@@ -239,9 +238,8 @@ class CausalInferencePipeline(torch.nn.Module):
                             current_start=current_start_frame * self.frame_seq_length,
                         )
 
-                    # Finalize frame timing for each frame in this block
-                    for frame_offset in range(current_num_frames):
-                        self.latency.finalize_frame()
+                    # Finalize frame timing for the block
+                    self.latency.finalize_frame_block()
 
                     if profile:
                         block_end.record()
